@@ -44,14 +44,16 @@ export default function App() {
   const selected = participants.find((p) => p.status === "selected") || null;
   const current = participants.find((p) => p.status === "current") || null;
 
-  const registerParticipant = useCallback((name) => {
+  const registerParticipant = useCallback((name, idNumber) => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    const idTrimmed = idNumber.trim();
+    if (!trimmed || !idTrimmed) return;
     setParticipants((prev) => [
       ...prev,
       {
         id: makeId(),
         name: trimmed,
+        idNumber: idTrimmed,
         status: "waiting",
         registeredAt: Date.now(),
       },
@@ -200,7 +202,10 @@ function QueueList({ waiting }) {
           {waiting.map((p, i) => (
             <li key={p.id} style={styles.queueItem}>
               <span style={styles.queuePosition}>{i + 1}</span>
-              <span style={styles.queueName}>{p.name}</span>
+              <div style={styles.queueDetails}>
+                <span style={styles.queueName}>{p.name}</span>
+                <span style={styles.queueIdNumber}>{p.idNumber}</span>
+              </div>
               <span style={styles.queueId}>{p.id}</span>
               <span style={styles.queueTime}>{formatClock(p.registeredAt)}</span>
             </li>
@@ -214,13 +219,15 @@ function QueueList({ waiting }) {
 // ---------- Registration (staff-facing, kept small) ----------
 function RegisterForm({ onRegister }) {
   const [name, setName] = useState("");
-  const inputRef = useRef(null);
+  const [idNumber, setIdNumber] = useState("");
+  const nameInputRef = useRef(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onRegister(name);
+    onRegister(name, idNumber);
     setName("");
-    inputRef.current?.focus();
+    setIdNumber("");
+    nameInputRef.current?.focus();
   };
 
   return (
@@ -228,7 +235,7 @@ function RegisterForm({ onRegister }) {
       <div style={styles.registerLabel}>Check in</div>
       <div style={styles.registerRow}>
         <input
-          ref={inputRef}
+          ref={nameInputRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -236,10 +243,18 @@ function RegisterForm({ onRegister }) {
           style={styles.registerInput}
           autoComplete="off"
         />
+        <input
+          type="text"
+          value={idNumber}
+          onChange={(e) => setIdNumber(e.target.value)}
+          placeholder="ID"
+          style={styles.registerInput}
+          autoComplete="off"
+        />
         <button
           type="submit"
           style={styles.registerBtn}
-          disabled={!name.trim()}
+          disabled={!name.trim() || !idNumber.trim()}
         >
           Add
         </button>
@@ -460,6 +475,17 @@ const styles = {
     padding: "12px 8px",
     borderBottom: `1px solid ${COLORS.border}`,
     fontSize: "18px",
+  },
+  queueDetails: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    minWidth: 0,
+  },
+  queueIdNumber: {
+    color: COLORS.textMuted,
+    fontSize: "13px",
+    fontWeight: 500,
   },
   queuePosition: {
     color: COLORS.textFaint,
