@@ -39,10 +39,15 @@ export default function handler(req, res) {
       res.status(404).json({ error: 'Participant not found' });
     }
   } else if (req.method === 'DELETE') {
-    // Delete participant
+    // Delete participant or reset all
     const { id } = req.body;
-    participants = participants.filter(p => p.id !== id);
-    res.status(200).json({ message: 'Deleted' });
+    if (id === 'ALL') {
+      participants = [];
+      res.status(200).json({ message: 'All participants cleared' });
+    } else {
+      participants = participants.filter(p => p.id !== id);
+      res.status(200).json({ message: 'Deleted' });
+    }
   } else {
     res.status(405).json({ error: 'Method not allowed' });
   }

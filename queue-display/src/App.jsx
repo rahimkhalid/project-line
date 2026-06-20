@@ -123,6 +123,23 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchParticipants]);
 
+  const resetAll = useCallback(async () => {
+    if (window.confirm('Are you sure you want to clear all participants? This cannot be undone.')) {
+      try {
+        const res = await fetch(API_URL, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'ALL' }),
+        });
+        if (res.ok) {
+          fetchParticipants();
+        }
+      } catch (err) {
+        console.error('Failed to reset:', err);
+      }
+    }
+  }, [API_URL, fetchParticipants]);
+
   const registerParticipant = useCallback(async (name, idNumber, category) => {
     const trimmed = name.trim();
     const idTrimmed = idNumber.trim();
@@ -280,7 +297,12 @@ export default function App() {
         <div style={styles.controlPanel}>
           <div style={styles.controlContent}>
             <ParticipantsList allActive={allActive} />
-            <RegisterForm onRegister={registerParticipant} />
+            <div style={styles.controlRight}>
+              <RegisterForm onRegister={registerParticipant} />
+              <button onClick={resetAll} style={styles.resetButton}>
+                Reset All
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -621,6 +643,25 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: "16px",
+  },
+
+  controlRight: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+
+  resetButton: {
+    background: "#D32F2F",
+    color: COLORS.bg,
+    border: "none",
+    borderRadius: "8px",
+    padding: "12px 18px",
+    fontWeight: 700,
+    fontSize: "14px",
+    cursor: "pointer",
+    fontFamily: FONT_BODY,
+    transition: "opacity 0.15s ease",
   },
 
   participantsPanel: {
