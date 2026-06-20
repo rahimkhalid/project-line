@@ -101,69 +101,138 @@ export default function App() {
     CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat]: { current: null, selected: null } }), {})
   );
 
-  const registerParticipant = useCallback((name, idNumber, category) => {
+  const API_URL = process.env.REACT_APP_API_URL || '/api/participants';
+
+  // Fetch participants from API
+  const fetchParticipants = useCallback(async () => {
+    try {
+      const res = await fetch(API_URL);
+      if (res.ok) {
+        const data = await res.json();
+        setParticipants(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch participants:', err);
+    }
+  }, [API_URL]);
+
+  // Poll for updates every 2 seconds
+  useEffect(() => {
+    fetchParticipants();
+    const interval = setInterval(fetchParticipants, 2000);
+    return () => clearInterval(interval);
+  }, [fetchParticipants]);
+
+  const registerParticipant = useCallback(async (name, idNumber, category) => {
     const trimmed = name.trim();
     const idTrimmed = idNumber.trim();
     const catTrimmed = category.trim();
     if (!trimmed || !idTrimmed || !catTrimmed) return;
-    setParticipants((prev) => [
-      ...prev,
-      {
-        id: makeId(),
-        name: trimmed,
-        idNumber: idTrimmed,
-        category: catTrimmed,
-        status: "waiting",
-        registeredAt: Date.now(),
-      },
-    ]);
-  }, []);
 
-  const selectNext = useCallback((category) => {
-    setParticipants((prev) => {
-      const categoryParticipants = prev.filter((p) => p.category === category);
-      if (categoryStates[category].selected) return prev; // already one selected
+    const newParticipant = {
+      id: makeId(),
+      name: trimmed,
+      idNumber: idTrimmed,
+      category: catTrimmed,
+      status: "waiting",
+      registeredAt: Date.now(),
+    };
 
-      const front = categoryParticipants
-        .filter((p) => p.status === "waiting")
-        .sort((a, b) => a.registeredAt - b.registeredAt)[0];
-      if (!front) return prev;
-
-      return prev.map((p) =>
-        p.id === front.id ? { ...p, status: "selected" } : p
-      );
-    });
-  }, [categoryStates]);
-
-  const callNext = useCallback((category) => {
-    setParticipants((prev) => {
-      let working = prev;
-      const hasSelected = working.some((p) => p.status === "selected" && p.category === category);
-
-      // Auto-select front of queue if nobody is selected yet for this category
-      if (!hasSelected) {
-        const front = working
-          .filter((p) => p.category === category && p.status === "waiting")
-          .sort((a, b) => a.registeredAt - b.registeredAt)[0];
-        if (!front) return prev; // nobody to call
-        working = working.map((p) =>
-          p.id === front.id ? { ...p, status: "selected" } : p
-        );
-      }
-
-      // Promote selected -> current, current -> served for this category
-      const result = working.map((p) => {
-        if (p.category !== category) return p;
-        if (p.status === "current") return { ...p, status: "served" };
-        if (p.status === "selected") return { ...p, status: "current" };
-        return p;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newParticipant),
       });
+      if (res.ok) {
+        fetchParticipants();
+      }
+    } catch (err) {
+      console.error('Failed to register participant:', err);
+    }
+  }, [API_URL, fetchParticipants]);
 
-      // Play notification sound
-      playNotificationSound();
-      return result;
-    });
-  }, []);
+  const selectNext = useCallback(async (category) => {
+    const categoryParticipants = participants.filter((p) => p.category === category);
+    if (categoryStates[category].selected) return;
+
+    const front = categoryParticipants
+      .filter((p) => p.status === "waiting")
+      .sort((a, b) => a.registeredAt - b.registeredAt)[0];
+    if (!front) return;
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: front.id, status: 'selected' }),
+      });
+      if (res.ok) {
+        fetchParticipants();
+      }
+    } catch (err) {
+      console.error('Failed to select next:', err);
+    }
+  }, [participants, categoryStates, API_URL, fetchParticipants]);
+
+  const callNext = useCallback(async (category) => {
+    let working = participants;
+    const hasSelected = working.some((p) => p.status === "selected" && p.category === category);
+
+    // Auto-select front of queue if nobody is selected yet for this category
+    let targetId = null;
+    if (!hasSelected) {
+      const front = working
+        .filter((p) => p.category === category && p.status === "waiting")
+        .sort((a, b) => a.registeredAt - b.registeredAt)[0];
+      if (!front) return;
+      targetId = front.id;
+
+      // First set to selected
+      try {
+        await fetch(API_URL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: targetId, status: 'selected' }),
+        });
+      } catch (err) {
+        console.error('Failed to select:', err);
+        return;
+      }
+    } else {
+      // Get the currently selected participant
+      targetId = working.find((p) => p.status === "selected" && p.category === category)?.id;
+    }
+
+    // Mark current as served, set selected to current
+    const current = working.find((p) => p.category === category && p.status === "current");
+    if (current) {
+      try {
+        await fetch(API_URL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: current.id, status: 'served' }),
+        });
+      } catch (err) {
+        console.error('Failed to mark as served:', err);
+      }
+    }
+
+    // Set target to current
+    try {
+      const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: targetId, status: 'current' }),
+      });
+      if (res.ok) {
+        playNotificationSound();
+        fetchParticipants();
+      }
+    } catch (err) {
+      console.error('Failed to call next:', err);
+    }
+  }, [participants, API_URL, fetchParticipants]);
 
   // Update categoryStates whenever participants change
   useEffect(() => {
